@@ -23,23 +23,24 @@ library(raster)
 library(cluster)
 library(textdata)
 library(wordcloud)
+library(reshape2)
 
 ```
-Part-1
+#Part-1
+
+Using the csv file wikipedia_geotags_in_uk the data set are loaded into wiki_geo. It contains the list of geotags associated with the wikipedia articles. 
+
 ```{r}
 wiki_geo <- read.csv(file.choose())
 ```
+The Local Authority District (LAD) assigned for the coursework is Wealden which contains 267 articles. From Wiki_geo Wealden LAD is filtered
 
 ```{r}
 wiki_geo <- wiki_geo %>% 
   filter(LAD21NM == 'Wealden') %>% 
   filter(gt_primary == 1)
 ```
-```{r}
-
-head(wiki_geo)
-```
-
+The code given by Stefano De Saddata in the coursework is modified and used to retrieve all the page summaries present in the given LAD.
 
 ```{r}
 
@@ -88,121 +89,78 @@ page_sent <- page_sent %>%
   add_row(a_page_summary)
 }
 ```
+Glimpse of wiki_geo can be viewed using the glimpse function. which gives the entries of overall rows and columns.
 
 ```{r}
-wiki_geo_coord <- wiki_geo %>% 
-  select(gt_lon, gt_lat, page_title)
+glimpse(wiki_geo) 
 ```
+The Wiki_geo contains various columns, form those the Latitude and Longitude for the geo-tag columns and the page_title columns are selected and saved in wiki_geo_coord.
 
 ```{r}
-to_join <- wiki_geo %>% 
-  select(page_title, gt_lat, gt_lon)
+wiki_geo_coord <- wiki_geo %>% dplyr:: select (page_title,gt_lat, gt_lon)
 ```
-
+The wiki_geo_coord is joined with the retrieved page_sent using the leftjoin function and stored in leftjoinDf.
 
 ```{r}
-leftJoinDf <- left_join(page_sent,to_join, by = c("page_name" = "page_title"))
+leftJoinDf <- left_join(page_sent,wiki_geo_coord, by = c("page_name" = "page_title"))
 View(leftJoinDf)
 ```
 
-```{r}
-glimpse(wiki_geo)
-```
+#PART-2
+Using the spatial frequency analysis, the contents in the articles retrieve from 
+the part - 1 can be pre-processed and frequency of words are explored. The word
+frequency count is used to count the number of time every word is used in a text.
+The text analysis parses the text in order to know the different structures of
+the test. After removing the stopwords the high frequency words and the low
+frequency words can be found. The words which are used many times are the high 
+frequency words and the words which are used very least are the low frequency words.
+After tokenization the sentences are broken into words and the stopwords are removed
+then the sentence chaining and the other analysis techniques are carried out.
+Using the clustering methods the articles retrieved from the wikipedia are clustered
+based on its latitude and longitude given in the data set. The summaries based 
+on its coordinates are clustered so that the articles speaking about the same 
+areas are clustered together. Using these clusters the frequency analysis can be 
+carried out and how it variews spatically can be seen.
 
-FREQUENCY OF WORDS
+
+
 
 
 ```{r}
 wiki_text <- leftJoinDf %>% 
   unnest_tokens(word, a_page_summary)
 ```
-Part- 2
+##FREQUENCY OF WORDS
+stopwords are removed from the wiki_text data using the aniti_join
+
 ```{r}
 wiki_text%>% 
   anti_join(stop_words) %>% 
   count(word, sort = TRUE)
 ```
+The count of the each words in the articles are counted using count and arranged in descending ordered and stored in the frequency_dataframe.
 
 ```{r}
 frequency_dataframe = wiki_text %>% count(word) %>% arrange(desc(n))
 
 ```
+The first 20 records from the frequency_dataframe are displayed in the 
+short_dataframe.
 
 ```{r}
 short_dataframe = head(frequency_dataframe, 20)
 ```
+Using the ggplot the words from the short_dataframe is displayed with word count
+in the Y axis and words in the X axis.
 
 ```{r}
 ggplot(short_dataframe, aes(x = word, y = n, fill = word)) + geom_col()
 ```
+###Clustering 
+Using the latitude and longitude in the wiki_text the frequency of words are 
+clustered into 6 different clusters. Each clusters contains the page_name which
+are geographically present near the same coordinates.
 
-
-
-```{r}
-unnest_function <- function(page_name) {
-  
-  # Gets the page content
-  page_info <- WikipediR::page_content('en', 'wikipedia', page_name = page_name)
-  
-  # Gets just the text
-  page_info <- page_info$parse$text
-  
-  # Removes useless html code
-  page_text <- htm2txt::htm2txt(page_info)
-  
-    # Removes some leftover characters
-  page_text <- stri_replace_all_regex(page_text, "\n", "")
-  page_text <- stri_replace_all_regex(page_text, "â¢", "")
-  page_text <- stri_replace_all_regex(page_text, "\n\n", "")
-  page_text <- stri_replace_all_regex(page_text, '/', "")
-  page_text <- stri_replace_all_regex(page_text, '\"', "")
-  
-  # Changes it into a dataframe
-  page_text <- as.data.frame(page_text)
-  
-  # Makes the dataframe into individual words
-  unnested <- page_text %>% 
-    unnest_tokens(word, page_text)
-  
-  # Removes 'stopwords' like 'The' as they are useless
-  unnested <- unnested %>% 
-    anti_join(get_stopwords()) %>%
-    count(word, sort = TRUE)
-  
-  # adds the page title as a column
-   unnested <- unnested %>% 
-     dplyr::mutate(page_name)
-  
-  return(unnested)
-}
-
-```
-
-```{r}
-page_word_count <- data.frame(
-  page_name = c(),
-  word = c(),
-  n = c()
-)
-
-```
-
-```{r}
-for (i in 1:nrow(wiki_text)) {
-  print(paste(
-    'Page title: Wealden',
-    wiki_geo$page_title[i]
-  ))
-  
-  page <- wiki_geo$page_title[i]
-  
-  page_word_count <- page_word_count %>% 
-    bind_rows(unnest_function(page))
-}
-
-```
-
-Clustering 
 ```{r}
 kmeans <- wiki_text%>% 
   dplyr::select(gt_lat,gt_lon)%>%
@@ -214,21 +172,28 @@ cluster <-
     cluster = kmeans%$% cluster%>% as.character()
   )
 ```
+Filtering the cluster 3 and removing the stop words.
+
 ```{r}
 cluster %>% 
   filter(cluster == 3) %>% 
   anti_join(stop_words) %>% 
   count(word, sort = TRUE)
 ```
+Cluster_geo consists of columns with the page_name and words along with its
+respected clusters and its coordinates. 
 
 ```{r}
 cluster_geo <- cluster %>% 
   sf::st_as_sf(coords = c('gt_lon', 'gt_lat'))
 ```
+The plot cluster_geo displaying all the six clusters.
 
 ```{r}
 plot(cluster_geo['cluster'])
 ```
+freq_cluster displays the first 10 words without the stop words from all the 
+clusters and its count.
 
 ```{r}
 freq_cluster <- tibble(
@@ -246,7 +211,10 @@ for (cluster_no in unique(cluster$cluster)){
       slice_head(n = 10)
   )
 }
+
 ```
+Using the ggplot, the cluster 1 is filtered and plotted with words in X axis 
+and number of counts in the Y axis.
 
 ```{r}
 freq_cluster %>% filter(cluster == '1') %>% 
@@ -254,12 +222,17 @@ freq_cluster %>% filter(cluster == '1') %>%
     geom_bar(aes(x = word, y = n), stat = 'identity')+
     labs(title = 'Cluster 1')
 ```
+Using the ggplot, the cluster 2 is filtered and plotted with words in X axis 
+and number of counts in the Y axis.
+
 ```{r}
 freq_cluster %>% filter(cluster == '2') %>% 
   ggplot() +
     geom_bar(aes(x = word, y = n), stat = 'identity')+
     labs(title = 'Cluster 2')
 ```
+Using the ggplot, the cluster 3 is filtered and plotted with words in X axis
+and number of counts in the Y axis.
 
 ```{r}
 freq_cluster %>% filter(cluster == '3') %>% 
@@ -267,79 +240,169 @@ freq_cluster %>% filter(cluster == '3') %>%
     geom_bar(aes(x = word, y = n), stat = 'identity')+
     labs(title = 'Cluster 3')
 ```
+Using the ggplot, the cluster 4 is filtered and plotted with words in X axis and
+number of counts in the Y axis.
+
 ```{r}
 freq_cluster %>% filter(cluster == '4') %>% 
   ggplot() +
     geom_bar(aes(x = word, y = n), stat = 'identity')+
     labs(title = 'Cluster 4')
 ```
+Using the ggplot, the cluster 5 is filtered and plotted with words in X axis
+and number of counts in the Y axis.
 ```{r}
 freq_cluster %>% filter(cluster == '5') %>% 
   ggplot() +
     geom_bar(aes(x = word, y = n), stat = 'identity')+
     labs(title = 'Cluster 5')
 ```
+Using the ggplot, the cluster 6 is filtered and plotted with words in X axis and
+number of counts in the Y axis.
 ```{r}
 freq_cluster %>% filter(cluster == '6') %>% 
   ggplot() +
     geom_bar(aes(x = word, y = n), stat = 'identity') +
     labs(title = 'Cluster 6')
 ```
+## Result
+The plots from the each clusters shows the output with its words and the number 
+of counts. The clusters are clustered based on the latitude and longitude of the 
+Wealden LAD. Frequency of words and pre processing the retrieved wikipedia 
+summaries are executed above and using the coordinates given in the csv file the 
+clusters are created and the plots are plotted. From the results of the plot, how
+the frequencies varies spatially can be noted. In each clusters, the most used
+words in the articles and the least used words can be viewed. Frequency analysis 
+helps to understand the given summaries and the spatial frequency helps to understand 
+how it varies spatially.
+ 
 
-Part 3 
+# Part 3
+Sentiment analysis is used in part-3 for the further  spatial analysis. The cluster
+are classified based on the geographic aspects and the result of the cluster
+frequencies are used for the sentiment analysis.
+Sentiment Analysis uses tidytext library and tidy data principles for the text 
+analysis. The combination of the individual words are consider as a text to analyze
+the sentiment of the text. The tidytext package gives access to various sentiment 
+lexicons. Some of the lexicons used are: 
+-> AFINN from Finn Arup Nielsen,
+-> bing from Bing Liu and collaborators,
+-> nrc from Saif Mohammad and Peter Turney. 
+
+All these lexicons are based on the single words. These words contain English
+words and the positive and negative sentiment scores are assigned to the words
+and the possible emotions are classified from these words.  
+
+The nrc lexicon categorizes the words into different sentiments like trust, fear, negative, sadness, anger, fear, positive, anticipation, disgust, joy and surprise.
+```{r}
+get_sentiments("nrc")
+```
+The afinn lexicon assigns score between -5 to 5 for each word indicating the negative sentiment and positive sentiment.
+
+```{r}
+get_sentiments("afinn")
+```
+The bing lexicon differentiate the words in a binary fashion. The negative and positive sentiments are categorizes based on the words.
+
+```{r}
+get_sentiments("bing")
+```
+Using the count function the page_name are counted from the wiki_text.
+
 ```{r}
 wiki_text  %>%
   count(page_name)
 
 ```
+cluster_frequency displays all the words without the stop words from all the clusters and its count.
 
 ```{r}
-get_sentiments("bing")
+cluster_frequency <- tibble(
+  cluster = character(),
+  word = character(),
+  n = integer()
+)
+for (cluster_no in unique(cluster$cluster)){
+  cluster_frequency <- freq_cluster %>% rbind(
+    cluster %>%
+      filter(cluster == cluster_no) %>%
+      anti_join(stop_words) %>%
+      count(word, cluster, sort = TRUE)) } 
+  
 ```
+Using the inner join the cluster_frequency and afinn sentiments are joined and 
+the sentiment value of the each word is displayed.
+
 ```{r}
-get_sentiments("nrc")
+innerJoinDf <- inner_join(wiki_text, get_sentiments('afinn'),by="word")
+innerJoinDf
 ```
+Using the inner join the cluster_frequency and afinn sentiments are joined and the 
+clusters are grouped and the total sentiment value is calculated.
+
 ```{r}
-get_sentiments("afinn")
+innerJoinDf <- inner_join(cluster_frequency, get_sentiments('afinn'),by="word")
+innerJoinDf %>% 
+  group_by(cluster) %>% 
+  summarise(sentiment_value = sum(n * value))
 ```
+Using the inner join the cluster_frequency and nrc sentiments are joined and the
+count of cluster and sentiment is calculated and plotted using the ggplot and
+geom with sentiments in the X axis and count in the Y asis.
+
 ```{r}
-nrc_joy <- get_sentiments("nrc") %>% 
+innerJoinDf <- inner_join(cluster_frequency, get_sentiments('nrc'),by="word")
+innerJoinDf %>% 
+  count(cluster, sentiment) %>% 
+  ggplot() +
+    geom_bar(aes(x = sentiment, y = n, fill = cluster), stat = 'identity')
+```
+Using nrc lexicon the joy emotion is filtered from the wiki_text and the words
+showing joy emotions are couts and displayed.
+
+```{r}
+joy <- get_sentiments("nrc") %>% 
   filter(sentiment == "joy")
 
-wiki_text%>%
-  inner_join(nrc_joy) %>%
+wiki_text %>%
+  inner_join(joy) %>%
   count(word, sort = TRUE)
 ```
-```{r}
-library(tidyr)
-
-jane_austen_sentiment <- wiki_text %>%
-  inner_join(get_sentiments("bing")) %>%
-  count(page_name, index = linenumber %/% 80, sentiment) %>%
-  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
-  mutate(sentiment = positive - negative)
-print(jane_austen_sentiment)
-```
+Inner join is used to join the cluster_frequency and joy. Using ggplot a simple 
+plotted to display the clusters which show more joy emotions. The cluster 5 has
+more number of joy words which indicates the articles in the cluster 5 geographical
+areas has more Joy sentiment words.
 
 ```{r}
-library(ggplot2)
-
-ggplot(jane_austen_sentiment, aes(index, sentiment, fill = page_name)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~page_name, ncol = 2, scales = "free_x")
+innerJoinDf <- inner_join(cluster_frequency,joy,by="word")
+innerJoinDf %>% 
+  count(cluster, sentiment) %>% 
+  ggplot() +
+    geom_bar(aes(x = sentiment, y = n, fill = cluster), stat = 'identity')
 ```
+The sentiment value of the each page_name is calculated and arranged in
+descending order.
 
 ```{r}
-get_sentiments("nrc") %>% 
-  filter(sentiment %in% c("positive", "negative")) %>% 
-  count(sentiment)
+innerJoinDf %>% 
+  group_by(page_name) %>% 
+  summarise(sentiment_value = sum(value)) %>% 
+  arrange(desc(sentiment_value))
 ```
+The emotions sentiments are displayed using the nrc sentiment, from wiki_text
+data the count of the each nrc sentiments are calculated for all the articles and
+the count is displayed.
 
 ```{r}
-get_sentiments("bing") %>% 
-  count(sentiment)
+nrc_senti <- get_sentiments("nrc")
 
+wiki_text%>%
+  inner_join(nrc_senti) %>% 
+  count(sentiment, sort = TRUE)
 ```
+Using the bing sentiments, the words are separated into negative and positive
+sentiments and the positive and negative sentiments are displayed according to the
+words in the wiki_text and its count is calculated . 
 
 ```{r}
 bing_word_counts <- wiki_text %>%
@@ -349,6 +412,7 @@ bing_word_counts <- wiki_text %>%
 
 bing_word_counts
 ```
+Using the ggplot, the negative and positive sentiments are plotted using the bing_word_count.
 
 ```{r}
 bing_word_counts %>%
@@ -362,12 +426,15 @@ bing_word_counts %>%
   labs(x = "Contribution to sentiment",
        y = NULL)
 ```
+The lexicon for the stopwords are calculated and stored in the custom_stop_words.
 
 ```{r}
 custom_stop_words <- bind_rows(tibble(word = c("miss"),  
                                       lexicon = c("custom")), 
                                stop_words)
 ```
+Using the wordcloud, the words from the wiki_text except the stopwords are arranged
+in the form of cloud.
 
 ```{r}
 
@@ -377,10 +444,10 @@ wiki_text %>%
   count(word) %>%
   with(wordcloud(word, n, max.words = 100))
 ```
+The positive and the negative sentiments calculated from the wiki_text data set
+are compared and displayed using the cloud format.
 
 ```{r}
-library(reshape2)
-
 wiki_text %>%
   inner_join(get_sentiments("bing")) %>%
   count(word, sentiment, sort = TRUE) %>%
@@ -388,82 +455,42 @@ wiki_text %>%
   comparison.cloud(colors = c("gray20", "gray80"),
                    max.words = 100)
 ```
-
-
-```{r}
-wiki_sentiment <- wiki_text %>%
-  # implement sentiment analysis with the "bing" lexicon
-  inner_join(get_sentiments("bing")) 
-
-wiki_sentiment %>%
-  # find how many positive/negative words each play has
-  count(page_name, sentiment)
-```
+The negative and positive sentiment counts are calculated for each page_name and
+its percentage is displayed.
 
 ```{r}
 sentiment_counts <- wiki_text %>%
-  # implement sentiment analysis using the "bing" lexicon
   inner_join(get_sentiments("bing")) %>%
-  # count the number of words by title, genre, and sentiment
   count(page_name,  sentiment)
 
 sentiment_counts %>%
   group_by(page_name) %>%
-  # find the total number of words in each play
   mutate(total = sum(n),
          percent = n / total) %>%
-  # filter the results for only negative sentiment
   filter(sentiment == "negative") %>%
   arrange(percent)
 ```
- 
-```{r}
-word_counts <- wiki_text %>%
-  inner_join(get_sentiments("bing")) %>%
-  # count by word and sentiment
-  count(word, sentiment)
+## Result
+The sentiment analysis is successfully carried for the words in all the articles
+given in the Wealden LAD. From the output of the sentiment analysis code, various
+results can be seen. Which shows various lexicon and its uses in the analysis. 
+Using the sentiment analysis the areas with more positive emotions and negative 
+emotions can be filtered using the articles written in the wikipedia using the 
+coordinates. Using the sentiment analysis various analysis can be carried to 
+view the words categorized in the binary fashion. From the result of cluster_frequency
+and the nrc lexicon, the cluster 5 has more number of positive emotion indicating
+words written in the articles listed under the cluster 5. Using the R libraries
+the analysis has been simple and easy to carry out. The spatial frequency analysis
+done using the wikipedia articles listed under the Wealden. The results of the
+code shows the frequency analysis and sentiment analysis carried out spatially.
 
-top_words <- word_counts %>%
-  # group by sentiment
-  group_by(sentiment) %>%
-  slice_max(n, n = 10) %>%
-  ungroup() %>%
-  mutate(word = reorder(word, n))
+analysis and
 
-ggplot(top_words, aes(n, word, fill = sentiment)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ sentiment, scales = "free")
-```
  
-```{r}
-wiki_text %>%
-  # implement sentiment analysis using "bing" lexicon
-  inner_join(get_sentiments("bing")) %>%
-  # count using four arguments
-  count(page_name, sentiment)
-```
+
+
  
-```{r}
-wiki_text %>%
-  inner_join(get_sentiments("bing")) %>%
-   count(page_name, sentiment) %>%
-  # pivot sentiment and n wider
-  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
-  # use mutate to compute net sentiment
-  mutate(sentiment = positive - negative) %>%
-  # put index on x-axis, sentiment on y-axis, and map comedy/tragedy to fill
-  ggplot(aes(page_name, sentiment)) +
-  # make a bar chart with geom_col()
-  geom_col() +
-  # make small multiples for each title with facet_wrap()
-  facet_wrap(~ page_name, scales = "free_x")
-```
-```{r}
-bind_rows(afinn, 
-          bing_and_nrc) %>%
-  ggplot(aes(index, sentiment, fill = method)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~method, ncol = 1, scales = "free_y")
-```
+
+
  
  
