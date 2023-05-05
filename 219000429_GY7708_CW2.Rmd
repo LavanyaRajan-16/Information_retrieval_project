@@ -1,6 +1,4 @@
 ---
-title: "219000429_GY7708_CW2"
-Author: 219000429
 output: html_notebook
 ---
 
